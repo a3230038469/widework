@@ -46,7 +46,7 @@ git config --global user.email "你的邮箱"
 ### 1.3 注册 GitHub + 进仓库
 
 1. 注册 <https://github.com> 账号
-2. **把你的 GitHub 用户名发给集成负责人**，他把你加进 `widework` 私有仓库
+2. **把你的 GitHub 用户名发给集成负责人**，他把你加进 `widework` 仓库的协作者（公开仓库只可读，协作者才能推代码）
 3. 收到邮件邀请，点接受
 
 ### 1.4 把项目拉到本地（一次性）
@@ -138,7 +138,7 @@ git push -u origin feat/12-F1-login-page
 
 ## 四、在 WorkBuddy 里干活的同学：产出怎么进 GitHub
 
-**重要事实**：WorkBuddy 沙箱**无法直连 github.com**（实测网络不通）。所以如果你习惯在 WorkBuddy 里用 AI 写代码，流程是：
+**重要事实**：沙箱能否直连 github.com **因环境而异，请先让 Agent 自检**（`gh auth status`）。已登录就能直连，可直接提交推送；未登录才需要下面的中转流程。如果习惯在 WorkBuddy 里用 AI 写代码，流程是：
 
 ```
 在 WorkBuddy 项目组里干活（AI 生成/修改代码）
