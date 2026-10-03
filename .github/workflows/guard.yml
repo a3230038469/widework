@@ -76,7 +76,7 @@ jobs:
               continue
             fi
             if echo "$F" | grep -qE '(^|/)node_modules/|(^|/)dist/|(^|/)\.env$|\.pyc$|(^|/)__pycache__/|\.log$|package-lock\.json$|yarn\.lock$'; then
-              echo"  ❌ 提交了不该提交的文件 → $F"
+              echo "  ❌ 提交了不该提交的文件 → $F"
               VIOLATION=1; continue
             fi
             # 允许 README（各目录说明文件）
@@ -84,7 +84,7 @@ jobs:
               continue
             fi
             if echo "$F" | grep -qE '^(frontend|backend|content|deploy|stats)/'; then
-              echo"  ⚠️  修改了业务代码 → $F"
+              echo "  ⚠️  修改了业务代码 → $F"
             fi
           done < /tmp/changed.txt
 
@@ -152,7 +152,7 @@ jobs:
           echo "─────────────────────────────────────────"
           echo " 剩下两关由人来做："
           echo "   第② 闸：PR 描述里勾选「契约对照清单」"
-          echo"            （对照 docs/contracts/ 的字段名是否一致）"
+          echo "            （对照 docs/contracts/ 的字段名是否一致）"
           echo "   第③ 闸：集成负责人鲍志广审批并点合并"
           echo ""
           echo " 三关全过才会进入 main。详见 CONTRIBUTING.md §3"
