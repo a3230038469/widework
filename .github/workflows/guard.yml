@@ -1,0 +1,158 @@
+name: 拼装守门· PR 三道闸
+
+# 本 CI 是方案 v1.0 §5.4「PR 闸门」的第① 闸：机器检查。
+# 契约对照清单（第② 闸）和集成负责人审批（第③ 闸）在 PR 模板与网页操作里完成。
+# 详细规则见docs/拼装式开发方案-v1.md §5.3「目录即边界」。
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  gate:
+    name: 拼装守门检查
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: ① 提交信息必须带 #任务号
+        run: |
+          echo "检查本次 PR 的提交信息是否带 #任务号..."
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            # 只校验 PR 新增的提交（跳过 merge commit）
+            COMMITS=$(git log --no-merges --pretty=format:"%s" \
+              "origin/${{ github.base_ref }}..origin/${{ github.head_ref }}" 2>/dev/null || true)
+          else
+            COMMITS=$(git log -1 --no-merges --pretty=format:"%s")
+          fi
+
+          if [ -z "$COMMITS" ]; then
+            echo "  ⚠️ 没取到提交记录，跳过（可能仅是 merge）"; exit 0
+          fi
+
+          FAIL=0
+          while IFS= read -r MSG; do
+            [ -z "$MSG" ] && continue
+            if echo "$MSG" | grep -qE '#[0-9]+'; then
+              echo "  ✅ $MSG"
+            else
+              echo "  ❌ 缺少 #任务号 → $MSG"
+              FAIL=1
+            fi
+          done <<< "$COMMITS"
+
+          if [ "$FAIL" = "1" ]; then
+            echo ""
+            echo "💡 提交信息格式要求（见 CONTRIBUTING.md §2）："
+            echo "   feat: 完成登录页表单校验 #12"
+            echo "   也就是「一句话说明 + 空格 + #Issue编号」"
+            exit 1
+          fi
+
+      - name: ② 目录即边界（禁止跨界改文件）
+        run: |
+          echo "检查是否越界修改了不属于本 PR 任务的目录..."
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="origin/${{ github.base_ref }}"; HEAD="origin/${{ github.head_ref }}"
+          else
+            BASE="HEAD~1"; HEAD="HEAD"
+          fi
+          git diff --name-only "$BASE" "$HEAD" > /tmp/changed.txt 2>/dev/null || true
+          TOTAL=$(wc -l < /tmp/changed.txt 2>/dev/null || echo 0)
+          echo "  本次改动 $TOTAL 个文件"
+
+          # 允许全团队改动的公共区（规则/契约/机制文档/CI配置）
+          ALLOW="^docs/|^CONTRIBUTING.md$|^README.md$|^\.github/|^CHANGELOG.md$|^\.gitignore$"
+
+          VIOLATION=0
+          while IFS= read -r F; do
+            [ -z "$F" ] && continue
+            if echo "$F" | grep -qE "$ALLOW"; then
+              continue
+            fi
+            if echo "$F" | grep -qE '(^|/)node_modules/|(^|/)dist/|(^|/)\.env$|\.pyc$|(^|/)__pycache__/|\.log$|package-lock\.json$|yarn\.lock$'; then
+              echo"  ❌ 提交了不该提交的文件 → $F"
+              VIOLATION=1; continue
+            fi
+            # 允许 README（各目录说明文件）
+            if echo "$F" | grep -qE 'README\.md$'; then
+              continue
+            fi
+            if echo "$F" | grep -qE '^(frontend|backend|content|deploy|stats)/'; then
+              echo"  ⚠️  修改了业务代码 → $F"
+            fi
+          done < /tmp/changed.txt
+
+          if [ "$VIOLATION" = "1" ]; then
+            echo ""
+            echo "💡 见CONTRIBUTING.md §2：只改自己任务目录内的文件。"
+            echo "   构建产物、依赖目录、.env、锁文件一律不要提交。"
+            exit 1
+          fi
+          echo "  ✅ 目录边界检查通过"
+
+      - name: ③ 后端不得直连引擎（契约收口检查）
+        run: |
+          echo "检查 weknora 内网地址是否只出现在 rag_proxy.py..."
+          HIT=$(grep -rl "weknora" backend/ 2>/dev/null | grep -v "rag_proxy.py" || true)
+          if [ -n "$HIT" ]; then
+            echo "  ❌ 以下文件出现 weknora，违反「粘合层收口」："
+            echo "$HIT" | sed 's/^/     - /'
+            echo ""
+            echo "💡 方案 v1.0 §5.3：全仓库唯一允许出现引擎地址的文件是"
+            echo "   backend/app/rag_proxy.py。其他模块一律通过它转发。"
+            exit 1
+          fi
+          echo "  ✅ 引擎收口检查通过"
+
+      - name: ④ 契约文件不得被绕过修改（提示需走流程）
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="origin/${{ github.base_ref }}"; HEAD="origin/${{ github.head_ref }}"
+          else
+            BASE="HEAD~1"; HEAD="HEAD"
+          fi
+          CONTRACT=$(git diff --name-only "$BASE" "$HEAD" 2>/dev/null | grep 'docs/contracts/' || true)
+          if [ -n "$CONTRACT" ]; then
+            echo "::warning::本次 PR 改动了契约文件："
+            echo "$CONTRACT" | sed 's/^/  - /'
+            echo ""
+            echo "⚠️ 契约是全队拼装的「插座标准」。"
+            echo "   10/4 冻结后，任何改动必须走 CONTRIBUTING.md §4 变更流程，"
+            echo "   并由集成负责人（鲍志广）在群里广播。"
+            echo "   契约已冻结后擅自修改，PR 会被直接打回。"
+          else
+            echo "  ✅ 未触碰契约文件"
+          fi
+
+      - name: ⑤ 前端不得硬编码后端内网地址
+        run: |
+          HIT=$(grep -rnE 'https?://(10|172|192)\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}|localhost:[0-9]{4,}' frontend/src/ 2>/dev/null || true)
+          if [ -n "$HIT" ]; then
+            echo "  ❌ 前端代码里出现内网地址/硬编码端口："
+            echo "$HIT" | head -5 | sed 's/^/     - /'
+            echo ""
+            echo "💡 前端只应访问同一份契约里的相对路径（如 /api/xxx），"
+            echo "   后端地址统一走环境变量（.env.example），不要写死在代码里。"
+            exit 1
+          fi
+          echo "  ✅ 前端无硬编码内网地址"
+
+      - name: ⑥ 合并总结
+        if: always()
+        run: |
+          echo ""
+          echo "─────────────────────────────────────────"
+          echo " 第① 闸 机器检查完成"
+          echo "─────────────────────────────────────────"
+          echo " 剩下两关由人来做："
+          echo "   第② 闸：PR 描述里勾选「契约对照清单」"
+          echo"            （对照 docs/contracts/ 的字段名是否一致）"
+          echo "   第③ 闸：集成负责人鲍志广审批并点合并"
+          echo ""
+          echo " 三关全过才会进入 main。详见 CONTRIBUTING.md §3"
